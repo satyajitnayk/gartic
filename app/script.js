@@ -18,6 +18,8 @@ const ctx = canvas.getContext('2d');
 let ws;
 let drawing = false;
 
+let apiBaseUrl = 'http://localhost:8080';
+
 // Event Listeners
 connectBtn.addEventListener('click', handleConnect);
 canvas.addEventListener('mousedown', () => (drawing = true));
@@ -79,7 +81,7 @@ function handleConnect() {
 }
 
 function connectToWebSocket(room, username) {
-  ws = new WebSocket(`ws://localhost:8080/ws?room=${room}&name=${username}`);
+  ws = new WebSocket(`ws://${apiBaseUrl}/ws?room=${room}&name=${username}`);
 }
 
 /**
