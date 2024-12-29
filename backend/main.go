@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -23,6 +24,7 @@ type Message struct {
 	Type    string `json:"type"`
 	Content string `json:"content"`
 	Room    string `json:"room"`
+	Sender  string `json:"sender"`
 }
 
 var clientsMutex sync.Mutex
@@ -50,11 +52,26 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	room := query.Get("room")
 	name := query.Get("name")
 
+	// If room or name is not provided, close the connection
+	if room == "" || name == "" {
+		conn.Close()
+		return
+	}
+
 	client := &Client{Conn: conn, Room: room, Name: name}
+
 	clientsMutex.Lock()
 	clients[conn] = client
 	clientsMutex.Unlock()
 
+	welcomeMsg := Message{
+		Type:    "welcome",
+		Content: fmt.Sprintf("Welcome %s to room: %s", client.Name, client.Room),
+		Room:    client.Room,
+	}
+	conn.WriteJSON(welcomeMsg)
+
+	// Listen for incoming messages
 	for {
 		var msg Message
 		err := conn.ReadJSON(&msg)
@@ -64,6 +81,17 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			clientsMutex.Unlock()
 			break
 		}
+
+		// Add metadata (room and username) to the message
+		clientsMutex.Lock()
+		sender := clients[conn]
+		if sender != nil {
+			msg.Room = sender.Room
+			msg.Sender = sender.Name
+		}
+		clientsMutex.Unlock()
+
+		// Broadcast the message
 		broadcast <- msg
 	}
 }
@@ -72,6 +100,8 @@ func handleMessages() {
 	for {
 		msg := <-broadcast
 
+		// Send the message to all clients in the same room
+		clientsMutex.Lock()
 		for conn, client := range clients {
 			if client.Room == msg.Room {
 				err := conn.WriteJSON(msg)
@@ -82,6 +112,7 @@ func handleMessages() {
 				}
 			}
 		}
+		clientsMutex.Unlock()
 	}
 }
 
