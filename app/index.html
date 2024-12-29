@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Connection</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div id="form-container">
+    <h2>Enter Room and Username</h2>
+    <label for="room-name">Room Name:</label>
+    <input type="text" id="room-name" placeholder="Enter room name">
+
+    <label for="user-name">Username:</label>
+    <input type="text" id="user-name" placeholder="Enter your name">
+
+    <button id="connect-btn">Join Room</button>
+  </div>
+
+  <div id="game-container" style="display: none;">
+    <div id="user-info">
+      <p id="room-display">Room: <span id="room-name-display"></span></p>
+      <p id="user-display">Username: <span id="user-name-display"></span></p>
+    </div>
+    <canvas id="drawing-board"></canvas>
+    <div id="chat-container">
+      <ul id="messages"></ul>
+      <input type="text" id="guess-input" placeholder="Type your guess...">
+      <button id="send-msg-btn">Guess</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
