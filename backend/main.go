@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -64,6 +65,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	clients[conn] = client
 	clientsMutex.Unlock()
 
+	// Start heartbeat mechanism
+	go startHeartBeat(conn)
+
 	welcomeMsg := Message{
 		Type:    "welcome",
 		Content: fmt.Sprintf("Welcome %s to room: %s", client.Name, client.Room),
@@ -81,38 +85,27 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 			clientsMutex.Unlock()
 			break
 		}
+		appendMetaAndBroadcast(conn, msg)
+	}
+}
 
-		// Add metadata (room and username) to the message
-		clientsMutex.Lock()
-		sender := clients[conn]
-		if sender != nil {
-			msg.Room = sender.Room
-			msg.Sender = sender.Name
+func sendMessageToRoom(msg Message) {
+	// Send the message to all clients in the same room
+	clientsMutex.Lock()
+	defer clientsMutex.Unlock()
+	for conn, client := range clients {
+		if client.Room == msg.Room {
+			if err := conn.WriteJSON(msg); err != nil {
+				log.Printf("Error sending message: %v", err)
+				deregisterClient(conn)
+			}
 		}
-		clientsMutex.Unlock()
-
-		// Broadcast the message
-		broadcast <- msg
 	}
 }
 
 func handleMessages() {
-	for {
-		msg := <-broadcast
-
-		// Send the message to all clients in the same room
-		clientsMutex.Lock()
-		for conn, client := range clients {
-			if client.Room == msg.Room {
-				err := conn.WriteJSON(msg)
-				if err != nil {
-					log.Printf("Error sending message: %v", err)
-					conn.Close()
-					delete(clients, conn)
-				}
-			}
-		}
-		clientsMutex.Unlock()
+	for msg := range broadcast {
+		sendMessageToRoom(msg)
 	}
 }
 
@@ -132,5 +125,78 @@ func listClients(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(clientDetails); err != nil {
 		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+	}
+}
+
+const (
+	heartbeatInterval = 10 // Send a ping every 10 seconds
+	heartbeatTimeout  = 20 // Disconnect if no pong received within 20 seconds
+)
+
+func registerClient(conn *websocket.Conn, r *http.Request) *Client {
+	query := r.URL.Query()
+	room, name := query.Get("room"), query.Get("name")
+
+	if room == "" || name == "" {
+		conn.Close()
+		return nil
+	}
+
+	client := &Client{Conn: conn, Room: room, Name: name}
+	clientsMutex.Lock()
+	clients[conn] = client
+	clientsMutex.Unlock()
+
+	welcomeMsg := Message{
+		Type:    "welcome",
+		Content: fmt.Sprintf("Welcome %s to room: %s", client.Name, client.Room),
+		Room:    client.Room,
+	}
+	conn.WriteJSON(welcomeMsg)
+
+	return client
+}
+
+func deregisterClient(conn *websocket.Conn) {
+	clientsMutex.Lock()
+	delete(clients, conn)
+	clientsMutex.Unlock()
+	conn.Close()
+}
+
+func appendMetaAndBroadcast(conn *websocket.Conn, msg Message) {
+	// Add metadata (room and username) to the message
+	clientsMutex.Lock()
+	sender := clients[conn]
+	if sender != nil {
+		msg.Room = sender.Room
+		msg.Sender = sender.Name
+	}
+	clientsMutex.Unlock()
+
+	// Broadcast the message
+	broadcast <- msg
+}
+
+func startHeartBeat(conn *websocket.Conn) {
+	ticker := time.NewTicker(heartbeatInterval * time.Second)
+	defer ticker.Stop()
+
+	// Set read deadline and pong handler
+	conn.SetReadDeadline(time.Now().Add(heartbeatTimeout * time.Second))
+	conn.SetPongHandler(func(appData string) error {
+		fmt.Println("Pong received")
+		conn.SetReadDeadline(time.Now().Add(heartbeatTimeout * time.Second)) // Reset deadline
+		return nil
+	})
+
+	for range ticker.C {
+		err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second))
+		if err != nil {
+			log.Printf("Heartbeat failed: %v", err)
+			deregisterClient(conn)
+			break
+		}
+		fmt.Println("ping sent")
 	}
 }
