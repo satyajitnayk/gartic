@@ -57,20 +57,19 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Set API Base URL for Frontend
-       run: |
-        # Extract the domain from the HEROKU_URL (remove http:// or https://)
-        DOMAIN=$(echo ${{ env.HEROKU_URL }} | sed 's|https\?://||')
-        echo "API_BASE_URL=${{ env.HEROKU_URL }}" >> $GITHUB_ENV
-        echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
+        run: |
+          # Extract the domain from the HEROKU_URL (remove http:// or https://)
+          DOMAIN=$(echo ${{ env.HEROKU_URL }} | sed 's|https\?://||')
+          echo "API_BASE_URL=${{ env.HEROKU_URL }}" >> $GITHUB_ENV
+          echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
 
       - name: Replace API URL in Frontend
-       run: |
-         # Replace placeholder in index.html with the Heroku app URL
-         sed -i 's|http://localhost:8080|${{ env.API_BASE_URL }}|g' ./app/script.js
+        run: |
+          # Replace placeholder in index.html with the Heroku app URL
+          sed -i 's|http://localhost:8080|${{ env.API_BASE_URL }}|g' ./app/script.js
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.WORKFLOW_TOKEN }}
           publish_dir: ./app # Path to the frontend directory
-
